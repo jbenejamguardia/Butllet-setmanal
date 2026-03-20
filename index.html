@@ -287,11 +287,17 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .bull-body{padding:14px 16px 6px;background:var(--cream);}
 .day-block{margin-bottom:13px;}
 .day-hdr{
-  background:var(--bordeus);border-radius:7px 7px 0 0;
+  border-radius:7px 7px 0 0;
   padding:8px 13px;display:flex;justify-content:space-between;align-items:center;
 }
+.day-hdr.centre { background:var(--bordeus); }
+.day-hdr.fora   { background:var(--green-mid); }
 .day-hdr .dn{font-size:.9rem;font-weight:700;color:white;letter-spacing:-.01em;}
 .day-hdr .dl{font-size:.73rem;font-weight:600;color:rgba(255,255,255,.8);}
+.act-name.centre { border-left:2.5px solid var(--bordeus); }
+.act-name.fora   { border-left:2.5px solid var(--green-mid); }
+.act-time.centre { color:var(--bordeus); }
+.act-time.fora   { color:var(--green-mid); }
 .act-row{
   background:white;border:1px solid #E5E5EA;border-top:none;
   display:flex;overflow:hidden;
@@ -456,8 +462,13 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
     -webkit-print-color-adjust:exact!important;
     print-color-adjust:exact!important;
   }
-  .day-hdr{
+  .day-hdr.centre{
     background:var(--bordeus)!important;
+    -webkit-print-color-adjust:exact!important;
+    print-color-adjust:exact!important;
+  }
+  .day-hdr.fora{
+    background:var(--green-mid)!important;
     -webkit-print-color-adjust:exact!important;
     print-color-adjust:exact!important;
   }
@@ -1132,11 +1143,15 @@ function renderBulletin(acts) {
 
   body.innerHTML = keys.map(dia => {
     const g = groups[dia];
-    // Agafa el dia_data del primer per mostrar-lo al header si totes les del dia el tenen
     const diaLabel = dia + (g[0].dia_data ? ' '+fmtDate(g[0].dia_data) : '');
     const llocH = g[0].lloc || 'Centre';
 
+    // Determina color: centre (buit o conté "centre") → bordeus; fora → verd
+    const esCentre = !g[0].lloc || /centre/i.test(g[0].lloc);
+    const colorClass = esCentre ? 'centre' : 'fora';
+
     const cards = g.map(a => {
+      const aC = !a.lloc || /centre/i.test(a.lloc) ? 'centre' : 'fora';
       const fotoUrl = a.foto_url || null;
       const time = a.hora_ini && a.hora_fi
         ? `${fmtTime(a.hora_ini)} – ${fmtTime(a.hora_fi)}`
@@ -1149,11 +1164,11 @@ function renderBulletin(acts) {
           <div class="act-photo">${media}</div>
           <div class="act-body">
             <div class="act-name-row">
-              <div class="act-name">${a.nom}</div>
-              ${time ? `<div class="act-time">${time}</div>` : ''}
+              <div class="act-name ${aC}">${a.nom}</div>
+              ${time ? `<div class="act-time ${aC}">${time}</div>` : ''}
             </div>
             <div class="act-meta">
-              ${a.grups||a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups||''}</div>` : ''}
+              ${a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
               ${a.prof ? `<div class="mr"><strong>Professorat:</strong>&nbsp;${a.prof}</div>` : ''}
               ${(a.descripcio||a.desc) ? `<div><em>${a.descripcio||a.desc}</em></div>` : ''}
             </div>
@@ -1162,7 +1177,7 @@ function renderBulletin(acts) {
     }).join('');
 
     return `<div class="day-block">
-      <div class="day-hdr">
+      <div class="day-hdr ${colorClass}">
         <span class="dn">${diaLabel}</span>
         <span class="dl">${llocH}</span>
       </div>
