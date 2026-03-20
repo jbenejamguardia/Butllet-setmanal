@@ -515,7 +515,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
           </div>
           <div>
             <label>Data concreta</label>
-            <input type="date" id="f-dia-data">
+            <input type="date" id="f-dia-data" onchange="detectarDia('f-dia-data','f-dia')">
           </div>
         </div>
 
@@ -721,7 +721,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
             <option>Tota la setmana</option>
           </select>
         </div>
-        <div><label>Data concreta</label><input type="date" id="m-dia-data"></div>
+        <div><label>Data concreta</label><input type="date" id="m-dia-data" onchange="detectarDia('m-dia-data','m-dia')"></div>
       </div>
       <div class="row2">
         <div><label>Hora inici</label><input type="time" id="m-hora-ini"></div>
@@ -788,6 +788,22 @@ let modalExtraIdx = null;
 let logoDataUrl = null;
 
 const ORDER = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Tota la setmana'];
+
+// ── DETECCIÓ AUTOMÀTICA DEL DIA ──
+function detectarDia(inputId, selectId) {
+  const val = document.getElementById(inputId).value;
+  if (!val) return;
+  // Usar la data com a string local per evitar problemes de zona horària
+  const [y, m, d] = val.split('-').map(Number);
+  const data = new Date(y, m - 1, d);
+  const diesSetmana = ['Diumenge','Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte'];
+  const nomDia = diesSetmana[data.getDay()];
+  const select = document.getElementById(selectId);
+  // Si és diumenge o dissabte, no canviem (no estan a la llista)
+  if (['Dilluns','Dimarts','Dimecres','Dijous','Divendres'].includes(nomDia)) {
+    select.value = nomDia;
+  }
+}
 
 // ── NAVEGACIÓ ──
 function showPage(id) {
