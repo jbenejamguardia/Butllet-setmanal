@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Butlletí Setmanal — IES Josep Miquel Guàrdia</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
 :root {
   --sf: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -642,7 +643,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
         <div id="extras-list"></div>
       </div>
 
-      <div style="padding:14px 20px;border-top:1px solid #F2F2F7;background:#FAFAFA;flex-shrink:0;">
+      <div style="padding:14px 20px;border-top:1px solid #F2F2F7;background:#FAFAFA;flex-shrink:0;display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-red" style="width:100%" onclick="window.print()">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <rect x="1.5" y="4.5" width="11" height="6.5" rx="1.5" stroke="white" stroke-width="1.3"/>
@@ -650,6 +651,9 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
             <path d="M4 9.5h6" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
           Imprimir / Desar PDF
+        </button>
+        <button class="btn btn-green" style="width:100%" id="btn-imatge" onclick="exportarImatge()">
+          🖼️ Exportar com a imatge
         </button>
       </div>
     </div>
@@ -1307,6 +1311,42 @@ function toast(msg, error=false) {
   t.style.opacity = '1'; t.style.transform = 'translateY(0)';
   clearTimeout(t._t);
   t._t = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2400);
+}
+
+// ── EXPORTAR IMATGE ──
+async function exportarImatge() {
+  const btn = document.getElementById('btn-imatge');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generant imatge…';
+  try {
+    const node = document.getElementById('bulletin');
+    const canvas = await html2canvas(node, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#FAFAF7',
+      logging: false,
+      onclone: (doc) => {
+        // Assegura que tots els elements clonats mostren els colors de fons
+        doc.querySelectorAll('*').forEach(el => {
+          el.style.webkitPrintColorAdjust = 'exact';
+          el.style.printColorAdjust = 'exact';
+        });
+      }
+    });
+    const link = document.createElement('a');
+    const mes = document.getElementById('b-mes').value.toLowerCase();
+    const ini = document.getElementById('b-ini').value.replace(/-/g,'');
+    link.download = `butlleti_${mes}${ini ? '_'+ini : ''}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('✅ Imatge exportada correctament');
+  } catch(e) {
+    toast('❌ Error exportant: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🖼️ Exportar com a imatge';
+  }
 }
 
 // ── INICI ──
