@@ -1222,7 +1222,7 @@ function renderBulletin(acts) {
     return;
   }
 
-  // Ordenar i agrupar per dia
+  // Ordenar per dia i data, sense agrupar — cada activitat és un bloc independent
   const sorted = [...acts].sort((a, b) => {
     const ia = ORDER.indexOf(a.dia ?? ''), ib = ORDER.indexOf(b.dia ?? '');
     if (ia !== ib) return (ia<0?99:ia) - (ib<0?99:ib);
@@ -1230,15 +1230,8 @@ function renderBulletin(acts) {
     return 0;
   });
 
-  const groups = {};
-  const groupOrder = [];
-  sorted.forEach(a => {
-    const key = (a.dia || 'Tota la setmana') + '||' + (a.dia_data || '');
-    if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
-    groups[key].push(a);
-  });
-
-  totsElsBlocs = groupOrder.map(key => ({ key, acts: groups[key] }));
+  // Cada activitat és el seu propi bloc (no s'agrupen mai)
+  totsElsBlocs = sorted.map((a, i) => ({ key: i + '||' + (a.nom||''), acts: [a] }));
   paginaActual = 0;
   calcularPaginacio();
   renderPaginaActual();
