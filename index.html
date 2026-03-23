@@ -1572,63 +1572,189 @@ function toast(msg, error=false) {
   t._t = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2400);
 }
 
-// ── EXPORTAR IMATGE (una imatge per pàgina, sense retallar) ──
+// ── EXPORTAR IMATGE — composició A4 bloc per bloc ──
 async function exportarImatge() {
   const btn = document.getElementById('btn-imatge');
   btn.disabled = true;
+  btn.textContent = '⏳ Preparant…';
 
-  const totalPagines = paginacio.length || 1;
-  const paginaOrig   = paginaActual;
   const mes     = document.getElementById('b-mes').value.toLowerCase();
   const ini     = document.getElementById('b-ini').value.replace(/-/g,'');
   const baseNom = `butlleti_${mes}${ini ? '_'+ini : ''}`;
 
+  // Mides A4 a 150ppi (bona qualitat, mida raonable)
+  const SCALE   = 2;
+  const A4_W    = 794;   // px a 96dpi (A4 = 210mm)
+  const A4_H    = 1123;  // px a 96dpi (A4 = 297mm)
+  const PAD     = 24;    // marge interior
+
   try {
-    for (let p = 0; p < totalPagines; p++) {
-      btn.textContent = `⏳ Exportant pàgina ${p+1} de ${totalPagines}…`;
-
-      // Mostrar la pàgina p al bulletin
-      paginaActual = p;
-      actualitzarNavPagina();
-      renderPaginaActual();
-
-      // Esperar que el DOM es renderitzi
-      await new Promise(r => setTimeout(r, 120));
-
-      const bulletin = document.getElementById('bulletin');
-
-      const canvas = await html2canvas(bulletin, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#FAFAF7',
-        logging: false,
-        onclone: (doc) => {
-          doc.querySelectorAll('*').forEach(el => {
-            el.style.webkitPrintColorAdjust = 'exact';
-            el.style.printColorAdjust = 'exact';
-          });
-        }
-      });
-
-      // Descarregar
-      const link = document.createElement('a');
-      link.download = totalPagines > 1 ? `${baseNom}_p${p+1}.png` : `${baseNom}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-
-      if (p < totalPagines - 1) await new Promise(r => setTimeout(r, 400));
+    if (!totsElsBlocs || !totsElsBlocs.length) {
+      toast('⚠️ No hi ha activitats per exportar', true);
+      return;
     }
 
-    toast(totalPagines > 1 ? `✅ ${totalPagines} imatges exportades` : '✅ Imatge exportada correctament');
+    // ── 1. Capturar la capçalera del butlletí (header + month-bar) ──
+    const bulletin   = document.getElementById('bulletin');
+    const bullHeader = bulletin.querySelector('.bull-header');
+    const bullMonthBar = bulletin.querySelector('.bull-month-bar');
+    const bullFooter = bulletin.querySelector('.bull-footer');
+
+    btn.textContent = '⏳ Capturant capçalera…';
+    const headerCanvas = await html2canvas(bullHeader, {
+      scale: SCALE, useCORS: true, allowTaint: true,
+      backgroundColor: null, logging: false,
+      onclone: d => d.querySelectorAll('*').forEach(e => { e.style.webkitPrintColorAdjust='exact'; e.style.printColorAdjust='exact'; })
+    });
+    const monthBarCanvas = await html2canvas(bullMonthBar, {
+      scale: SCALE, useCORS: true, allowTaint: true,
+      backgroundColor: null, logging: false,
+      onclone: d => d.querySelectorAll('*').forEach(e => { e.style.webkitPrintColorAdjust='exact'; e.style.printColorAdjust='exact'; })
+    });
+    const footerCanvas = await html2canvas(bullFooter, {
+      scale: SCALE, useCORS: true, allowTaint: true,
+      backgroundColor: null, logging: false,
+      onclone: d => d.querySelectorAll('*').forEach(e => { e.style.webkitPrintColorAdjust='exact'; e.style.printColorAdjust='exact'; })
+    });
+
+    // ── 2. Capturar cada bloc de dia individualment ──
+    // Primer renderitzar TOTS els blocs al DOM (sense paginació)
+    const bullBody = document.getElementById('bull-body');
+    const savedHTML = bullBody.innerHTML;
+    bullBody.innerHTML = totsElsBlocs.map((bloc, idx) => renderBlocDia(bloc, idx)).join('');
+    await new Promise(r => setTimeout(r, 80));
+
+    const dayBlockEls = Array.from(bullBody.querySelectorAll('.day-block'));
+    const blocCanvases = [];
+    for (let i = 0; i < dayBlockEls.length; i++) {
+      btn.textContent = `⏳ Capturant bloc ${i+1} de ${dayBlockEls.length}…`;
+      const c = await html2canvas(dayBlockEls[i], {
+        scale: SCALE, useCORS: true, allowTaint: true,
+        backgroundColor: null, logging: false,
+        onclone: d => d.querySelectorAll('*').forEach(e => { e.style.webkitPrintColorAdjust='exact'; e.style.printColorAdjust='exact'; })
+      });
+      blocCanvases.push(c);
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    // Restaurar el DOM
+    bullBody.innerHTML = savedHTML;
+    activarDrag();
+
+    // ── 3. Composar pàgines A4 ──
+    const pageW = A4_W * SCALE;
+    const pageH = A4_H * SCALE;
+    const pad   = PAD  * SCALE;
+    const gap   = 13   * SCALE; // .day-block margin-bottom
+
+    // Escalar els canvases capturats a l'amplada de la pàgina
+    function scaleCanvas(src, targetW) {
+      const ratio  = targetW / src.width;
+      const destH  = Math.round(src.height * ratio);
+      const dst    = document.createElement('canvas');
+      dst.width    = targetW;
+      dst.height   = destH;
+      dst.getContext('2d').drawImage(src, 0, 0, targetW, destH);
+      return dst;
+    }
+
+    const contentW   = pageW - pad * 2;
+    const headerSc   = scaleCanvas(headerCanvas,   contentW);
+    const monthBarSc = scaleCanvas(monthBarCanvas, contentW);
+    const footerSc   = scaleCanvas(footerCanvas,   contentW);
+    const blocsSc    = blocCanvases.map(c => scaleCanvas(c, contentW));
+
+    // Fons: degradat verd clar (igual que el body del butlletí)
+    function newPageCanvas() {
+      const c   = document.createElement('canvas');
+      c.width   = pageW;
+      c.height  = pageH;
+      const ctx = c.getContext('2d');
+      // Fons crema
+      ctx.fillStyle = '#FAFAF7';
+      ctx.fillRect(0, 0, pageW, pageH);
+      // Punts decoratius subtils
+      ctx.fillStyle = 'rgba(133,196,150,0.18)';
+      for (let x = 0; x < pageW; x += 15*SCALE) {
+        for (let y = 0; y < pageH; y += 15*SCALE) {
+          ctx.beginPath();
+          ctx.arc(x + 2*SCALE, y + 2*SCALE, 1.3*SCALE, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+      return c;
+    }
+
+    const pages   = [];
+    let curPage   = newPageCanvas();
+    let ctx       = curPage.getContext('2d');
+    let curY      = pad;
+    let firstPage = true;
+
+    function drawAndAdvance(canvas) {
+      ctx.drawImage(canvas, pad, curY, canvas.width, canvas.height);
+      curY += canvas.height;
+    }
+
+    function drawHeader() {
+      drawAndAdvance(headerSc);
+      drawAndAdvance(monthBarSc);
+      curY += pad * 0.5;
+    }
+
+    function newPage() {
+      // Afegir footer a la pàgina actual
+      const footerY = pageH - pad - footerSc.height;
+      ctx.drawImage(footerSc, pad, footerY, footerSc.width, footerSc.height);
+      pages.push(curPage);
+      curPage = newPageCanvas();
+      ctx     = curPage.getContext('2d');
+      curY    = pad;
+      drawHeader();
+    }
+
+    // Espai disponible per blocs = pageH - pad(top) - header - monthbar - gap - footer - pad(bottom)
+    const fixedTopH  = headerSc.height + monthBarSc.height + pad * 0.5;
+    const fixedBotH  = footerSc.height + pad * 1.5;
+    const usableH    = pageH - fixedTopH - fixedBotH;
+
+    drawHeader();
+    firstPage = false;
+
+    for (let i = 0; i < blocsSc.length; i++) {
+      const b = blocsSc[i];
+      const needed = b.height + gap;
+
+      // Si no hi cap, nova pàgina
+      if (curY + needed > pageH - fixedBotH) {
+        newPage();
+      }
+
+      drawAndAdvance(b);
+      curY += gap;
+    }
+
+    // Footer última pàgina
+    const footerY = pageH - pad - footerSc.height;
+    ctx.drawImage(footerSc, pad, footerY, footerSc.width, footerSc.height);
+    pages.push(curPage);
+
+    // ── 4. Descarregar ──
+    btn.textContent = `⏳ Descarregant ${pages.length} imatge(s)…`;
+    for (let i = 0; i < pages.length; i++) {
+      const link = document.createElement('a');
+      link.download = pages.length > 1 ? `${baseNom}_p${i+1}.png` : `${baseNom}.png`;
+      link.href = pages[i].toDataURL('image/png');
+      link.click();
+      if (i < pages.length - 1) await new Promise(r => setTimeout(r, 400));
+    }
+
+    toast(pages.length > 1 ? `✅ ${pages.length} pàgines A4 exportades` : '✅ Imatge A4 exportada');
 
   } catch(e) {
+    console.error(e);
     toast('❌ Error exportant: ' + e.message, true);
   } finally {
-    // Restaurar la pàgina original
-    paginaActual = paginaOrig;
-    actualitzarNavPagina();
-    renderPaginaActual();
     btn.disabled = false;
     btn.textContent = '🖼️ Exportar com a imatge';
   }
