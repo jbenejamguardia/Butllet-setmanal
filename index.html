@@ -754,7 +754,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
         </div>
       </div>
       <!-- Bulletin ocult — necessari per capturar capçalera/peu -->
-      <div id="bulletin" style="position:fixed;left:-9999px;top:0;width:740px;visibility:hidden;pointer-events:none;">
+      <div id="bulletin" style="position:fixed;left:-9999px;top:0;width:740px;pointer-events:none;z-index:-1;">
         <div class="bull-inner">
           <div class="bull-header">
             <div class="bull-week" id="b-prev-setmana"></div>
@@ -1390,95 +1390,140 @@ function activarDrag() {
 
 // ── FUNCIÓ SHARED: genera pàgines A4 com a array de canvas ──
 async function generarPaginesA4(scale = 2) {
-  const A4_W  = 794;
-  const A4_H  = 1123;
-  const PAD   = 28;
-  const INNER = 16;
-  const GAP   = 13;
-  const CONTENT_W = A4_W - PAD * 2;
+  const A4_W      = 794;
+  const A4_H      = 1123;
+  const PAD       = 28;
+  const INNER_PAD = 16;
+  const GAP       = 13;
+  const CONTENT_W = A4_W - PAD * 2;   // 738px
 
-  // Contenidor off-screen a amplada exacta A4
-  const offscreen = document.createElement('div');
-  offscreen.style.cssText = `position:fixed;left:-9999px;top:0;width:${CONTENT_W}px;
-    background:var(--cream);font-family:var(--sf,-apple-system,sans-serif);z-index:-1;visibility:hidden;`;
-  document.body.appendChild(offscreen);
+  // ── Contenidor off-screen VISIBLE (html2canvas necessita que sigui visible) ──
+  const wrap = document.createElement('div');
+  wrap.id = 'export-wrap';
+  wrap.style.cssText = [
+    'position:fixed',
+    'left:-9999px',
+    'top:0',
+    `width:${CONTENT_W}px`,
+    'background:#FAFAF7',
+    'z-index:9999',
+    'overflow:visible',
+  ].join(';');
+  document.body.appendChild(wrap);
 
-  const h2cOpts = {
-    scale, useCORS: true, allowTaint: true, backgroundColor: null, logging: false,
-    onclone: d => d.querySelectorAll('*').forEach(e => {
-      e.style.webkitPrintColorAdjust = 'exact';
-      e.style.printColorAdjust = 'exact';
-    })
+  // Esperar que el navegador el pinti
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  const h2c = (el) => html2canvas(el, {
+    scale,
+    useCORS:     true,
+    allowTaint:  true,
+    backgroundColor: null,
+    logging:     false,
+    width:       el.offsetWidth  || CONTENT_W,
+    height:      el.offsetHeight || undefined,
+    onclone: (doc) => {
+      doc.querySelectorAll('*').forEach(e => {
+        e.style.webkitPrintColorAdjust = 'exact';
+        e.style.printColorAdjust       = 'exact';
+      });
+    }
+  });
+
+  // ── Capturar capçalera: clone del bulletin visible ──
+  const bulletin = document.getElementById('bulletin');
+
+  const captureSection = async (selector) => {
+    const src  = bulletin.querySelector(selector);
+    const node = src.cloneNode(true);
+    node.style.width    = CONTENT_W + 'px';
+    node.style.maxWidth = 'none';
+    node.style.display  = 'block';
+    wrap.innerHTML = '';
+    wrap.appendChild(node);
+    await new Promise(r => setTimeout(r, 60));
+    return h2c(node);
   };
 
-  const cloneAndCapture = async (selector) => {
-    const src = document.getElementById('bulletin').querySelector(selector);
-    const el  = src.cloneNode(true);
-    el.style.width    = CONTENT_W + 'px';
-    el.style.maxWidth = 'none';
-    el.style.boxSizing = 'border-box';
-    offscreen.innerHTML = '';
-    offscreen.appendChild(el);
-    await new Promise(r => setTimeout(r, 30));
-    return html2canvas(el, { ...h2cOpts, width: CONTENT_W });
-  };
+  const headerC   = await captureSection('.bull-header');
+  const monthBarC = await captureSection('.bull-month-bar');
+  const footerC   = await captureSection('.bull-footer');
 
-  const headerC   = await cloneAndCapture('.bull-header');
-  const monthBarC = await cloneAndCapture('.bull-month-bar');
-  const footerC   = await cloneAndCapture('.bull-footer');
-
-  // Capturar cada bloc
+  // ── Capturar cada bloc d'activitat ──
   const blocCanvases = [];
   for (let i = 0; i < totsElsBlocs.length; i++) {
-    offscreen.innerHTML = `<div style="padding:0 ${INNER}px 1px;">${renderBlocDia(totsElsBlocs[i], i)}</div>`;
-    await new Promise(r => setTimeout(r, 30));
-    const c = await html2canvas(offscreen.firstChild, { ...h2cOpts, width: CONTENT_W });
+    const blocHTML = renderBlocDia(totsElsBlocs[i], i);
+    wrap.innerHTML = `<div style="width:${CONTENT_W}px;padding:0 ${INNER_PAD}px 2px;box-sizing:border-box;background:#FAFAF7;">${blocHTML}</div>`;
+    const node = wrap.firstChild;
+    await new Promise(r => setTimeout(r, 60));
+    const c = await h2c(node);
     blocCanvases.push(c);
   }
 
-  document.body.removeChild(offscreen);
+  document.body.removeChild(wrap);
 
-  // Composar pàgines
+  // ── Composar pàgines A4 ──
   const pageW = A4_W * scale;
   const pageH = A4_H * scale;
   const pad   = PAD  * scale;
   const gap   = GAP  * scale;
-  const botH  = footerC.height + pad;
+  const botH  = footerC.height + pad * 1.5;
 
   function newPage() {
-    const c = document.createElement('canvas');
-    c.width = pageW; c.height = pageH;
+    const c   = document.createElement('canvas');
+    c.width   = pageW;
+    c.height  = pageH;
     const ctx = c.getContext('2d');
+    // Fons crema
     ctx.fillStyle = '#FAFAF7';
     ctx.fillRect(0, 0, pageW, pageH);
+    // Punts decoratius
     ctx.fillStyle = 'rgba(133,196,150,0.15)';
-    for (let x = 0; x < pageW; x += 15*scale)
-      for (let y = 0; y < pageH; y += 15*scale) {
-        ctx.beginPath(); ctx.arc(x+2*scale, y+2*scale, 1.3*scale, 0, Math.PI*2); ctx.fill();
+    for (let x = 0; x < pageW; x += 15 * scale)
+      for (let y = 0; y < pageH; y += 15 * scale) {
+        ctx.beginPath();
+        ctx.arc(x + 2 * scale, y + 2 * scale, 1.3 * scale, 0, Math.PI * 2);
+        ctx.fill();
       }
     return c;
   }
 
   const pages = [];
-  let pg = newPage(), ctx = pg.getContext('2d'), curY = pad;
+  let pg  = newPage();
+  let ctx = pg.getContext('2d');
+  let curY = pad;
 
-  const draw = (c) => { ctx.drawImage(c, pad, curY, c.width, c.height); curY += c.height; };
-  const drawHeader = () => { draw(headerC); draw(monthBarC); curY += Math.round(pad * 0.3); };
+  const draw = (c) => {
+    ctx.drawImage(c, pad, curY, c.width, c.height);
+    curY += c.height;
+  };
+
+  const drawHeader = () => {
+    draw(headerC);
+    draw(monthBarC);
+    curY += Math.round(pad * 0.3);
+  };
+
   const finishPage = () => {
     ctx.drawImage(footerC, pad, pageH - pad - footerC.height, footerC.width, footerC.height);
     pages.push(pg);
   };
 
   drawHeader();
+
   for (let i = 0; i < blocCanvases.length; i++) {
-    if (curY + blocCanvases[i].height + gap > pageH - botH) {
+    const bh = blocCanvases[i].height + gap;
+    if (curY + bh > pageH - botH) {
       finishPage();
-      pg = newPage(); ctx = pg.getContext('2d'); curY = pad;
+      pg  = newPage();
+      ctx = pg.getContext('2d');
+      curY = pad;
       drawHeader();
     }
     draw(blocCanvases[i]);
     curY += gap;
   }
+
   finishPage();
   return pages;
 }
