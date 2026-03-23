@@ -1444,10 +1444,53 @@ async function exportarImatge() {
   const btn = document.getElementById('btn-imatge');
   btn.disabled = true;
   btn.textContent = '⏳ Generant imatge…';
+
+  const bulletin  = document.getElementById('bulletin');
+  const preview   = document.getElementById('p2-preview') || bulletin.closest('.p2-preview');
+
+  // Guardar estils originals
+  const origBulletinStyle = {
+    width:     bulletin.style.width,
+    maxWidth:  bulletin.style.maxWidth,
+    position:  bulletin.style.position,
+    left:      bulletin.style.left,
+    top:       bulletin.style.top,
+    zIndex:    bulletin.style.zIndex,
+    boxShadow: bulletin.style.boxShadow,
+    borderRadius: bulletin.style.borderRadius,
+  };
+
   try {
-    const bulletin = document.getElementById('bulletin');
-    const PAGE_H = 900; // pixels per pàgina (a escala 1x, multiplicat per scale)
-    const SCALE  = 2;
+    const EXPORT_W = 900;   // amplada de l'exportació en pixels lògics
+    const PAGE_H   = 1200;  // alçada màxima per pàgina en pixels lògics
+    const SCALE    = 2;
+
+    // Expandir el butlletí temporalment fora del flux per capturar-lo sencer
+    bulletin.style.width        = EXPORT_W + 'px';
+    bulletin.style.maxWidth     = 'none';
+    bulletin.style.position     = 'fixed';
+    bulletin.style.left         = '-9999px';
+    bulletin.style.top          = '0';
+    bulletin.style.zIndex       = '-1';
+    bulletin.style.boxShadow    = 'none';
+    bulletin.style.borderRadius = '0';
+
+    // Esperar un frame perquè el layout es recalculi
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // Mesurar els day-blocks ABANS de capturar (posicions reals del DOM expandit)
+    const dayBlocks = Array.from(bulletin.querySelectorAll('.day-block'));
+    const bullRect  = bulletin.getBoundingClientRect();
+
+    // Boundaries de tall: entre blocs (en pixels lògics del bulletin)
+    const boundaries = [0];
+    dayBlocks.forEach(bl => {
+      const r = bl.getBoundingClientRect();
+      boundaries.push(Math.round(r.top    - bullRect.top));  // inici del bloc
+      boundaries.push(Math.round(r.bottom - bullRect.top));  // fi del bloc
+    });
+    const totalHLogic = Math.round(bullRect.height);
+    boundaries.push(totalHLogic);
 
     // Capturar tot el butlletí a alta resolució
     const fullCanvas = await html2canvas(bulletin, {
@@ -1456,6 +1499,8 @@ async function exportarImatge() {
       allowTaint: true,
       backgroundColor: '#FAFAF7',
       logging: false,
+      width:  EXPORT_W,
+      height: totalHLogic,
       onclone: (doc) => {
         doc.querySelectorAll('*').forEach(el => {
           el.style.webkitPrintColorAdjust = 'exact';
@@ -1464,54 +1509,44 @@ async function exportarImatge() {
       }
     });
 
-    const totalW = fullCanvas.width;
-    const totalH = fullCanvas.height;
-    const pageHpx = PAGE_H * SCALE; // pàgina en pixels canvas
+    const totalW  = fullCanvas.width;   // EXPORT_W * SCALE
+    const totalH  = fullCanvas.height;  // totalHLogic * SCALE
+    const pageHpx = PAGE_H * SCALE;
 
-    // Identificar on comencen i acaben els day-blocks per no tallar-los
-    const dayBlocks = bulletin.querySelectorAll('.day-block');
-    const bullRect  = bulletin.getBoundingClientRect();
-
-    // Llista de talls permesos (entre day-blocks)
-    // Recollim els límits inferior de cada bloc
-    const blockBoundaries = [0]; // sempre podem tallar al principi
-    dayBlocks.forEach(bl => {
-      const r = bl.getBoundingClientRect();
-      const topPx    = (r.top  - bullRect.top)  * SCALE;
-      const bottomPx = (r.bottom - bullRect.top) * SCALE;
-      blockBoundaries.push(Math.round(topPx));    // poden tallar ABANS d'un bloc
-      blockBoundaries.push(Math.round(bottomPx)); // o DESPRÉS d'un bloc
-    });
-    blockBoundaries.push(totalH);
-
-    // Dividir en pàgines: cada pàgina ha de tenir almenys un bloc complet
+    // Calcular pàgines sense tallar cap requadre
     const pages = [];
-    let curY = 0;
-    while (curY < totalH) {
-      // Buscar el millor tall dins [curY + pageHpx*0.5, curY + pageHpx]
-      const minCut = curY + pageHpx * 0.4;
-      const maxCut = curY + pageHpx;
+    let curY = 0; // en pixels canvas (lògics * SCALE)
 
-      // El tall ideal: el boundary més gran <= maxCut i >= minCut
-      const validCuts = blockBoundaries.filter(b => b > curY && b <= maxCut && b >= minCut);
+    while (curY < totalH) {
+      const maxCutPx = curY + pageHpx;
+
+      // Convertir boundaries a pixels canvas
+      const boundsPx = boundaries.map(b => b * SCALE);
+
+      // Trobar el boundary més alt que sigui <= maxCutPx i > curY
+      const valid = boundsPx.filter(b => b > curY && b <= maxCutPx);
       let cutY;
-      if (validCuts.length > 0) {
-        cutY = Math.max(...validCuts);
+      if (valid.length > 0) {
+        cutY = Math.max(...valid); // el més avall possible sense passar de la pàgina
       } else {
-        // No hi ha tall ideal: forcem al primer boundary > curY
-        const anyNext = blockBoundaries.filter(b => b > curY);
-        cutY = anyNext.length ? Math.min(...anyNext) : totalH;
+        // Bloc més gran que una pàgina: forçar el següent boundary > curY
+        const next = boundsPx.filter(b => b > curY);
+        cutY = next.length ? Math.min(...next) : totalH;
       }
       cutY = Math.min(cutY, totalH);
 
+      if (cutY <= curY) break; // seguretat anti-bucle infinit
+
       pages.push({ y: curY, h: cutY - curY });
       curY = cutY;
-      if (cutY >= totalH) break;
     }
 
+    // Restaurar estils originals ABANS de descarregar
+    Object.assign(bulletin.style, origBulletinStyle);
+
     // Descarregar una imatge per pàgina
-    const mes = document.getElementById('b-mes').value.toLowerCase();
-    const ini = document.getElementById('b-ini').value.replace(/-/g,'');
+    const mes     = document.getElementById('b-mes').value.toLowerCase();
+    const ini     = document.getElementById('b-ini').value.replace(/-/g,'');
     const baseNom = `butlleti_${mes}${ini ? '_'+ini : ''}`;
 
     for (let i = 0; i < pages.length; i++) {
@@ -1520,18 +1555,23 @@ async function exportarImatge() {
       pageCanvas.width  = totalW;
       pageCanvas.height = h;
       const ctx = pageCanvas.getContext('2d');
+      // Fons blanc per si hi ha transparències
+      ctx.fillStyle = '#FAFAF7';
+      ctx.fillRect(0, 0, totalW, h);
       ctx.drawImage(fullCanvas, 0, y, totalW, h, 0, 0, totalW, h);
 
       const link = document.createElement('a');
       link.download = pages.length > 1 ? `${baseNom}_p${i+1}.png` : `${baseNom}.png`;
       link.href = pageCanvas.toDataURL('image/png');
       link.click();
-      // Petit retard entre descàrregues perquè el navegador les processi
-      if (i < pages.length - 1) await new Promise(r => setTimeout(r, 300));
+      if (i < pages.length - 1) await new Promise(r => setTimeout(r, 350));
     }
 
     toast(pages.length > 1 ? `✅ ${pages.length} imatges exportades` : '✅ Imatge exportada correctament');
+
   } catch(e) {
+    // Restaurar en cas d'error també
+    Object.assign(bulletin.style, origBulletinStyle);
     toast('❌ Error exportant: ' + e.message, true);
   } finally {
     btn.disabled = false;
