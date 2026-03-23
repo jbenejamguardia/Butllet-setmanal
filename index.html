@@ -315,7 +315,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .bull-month-name{font-size:.96rem;font-weight:700;color:var(--green-deep);display:flex;align-items:center;gap:4px;}
 .bull-nav-icons{display:flex;gap:10px;}
 .bull-nav-icons svg{width:17px;height:17px;}
-.bull-body{padding:14px 16px 6px;background:var(--cream);}
+.bull-body{padding:14px 16px 20px;background:var(--cream);}
 .day-block{margin-bottom:13px;cursor:grab;}
 .day-block.dragging{opacity:.4;cursor:grabbing;}
 .day-block.drag-over{outline:2px dashed var(--green-mid);border-radius:8px;}
@@ -353,8 +353,10 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .act-meta strong{font-weight:600;color:var(--text);}
 .act-meta em{font-style:italic;color:var(--text3);}
 .bull-footer{
-  margin:0 16px 14px;border-top:1px solid #E5E5EA;
-  padding-top:12px;text-align:center;
+  background:linear-gradient(0deg,#e8f5ea,var(--cream));
+  margin:0;padding:18px 16px 28px;
+  border-top:1px solid rgba(90,158,111,.15);
+  text-align:center;
 }
 #bull-logo{max-height:46px;max-width:160px;display:none;object-fit:contain;margin:0 auto 6px;}
 #bull-footer-name{font-size:.73rem;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;}
@@ -1078,6 +1080,13 @@ async function eliminarActivitat(id) {
   await carregarActivitats();
 }
 
+async function corregirDia(id, diaCorrecte) {
+  const { error } = await sb.from('activitats').update({ dia: diaCorrecte }).eq('id', id);
+  if (error) { toast('❌ Error corregint el dia', true); return; }
+  toast(`✅ Dia corregit a ${diaCorrecte}`);
+  await carregarActivitats();
+}
+
 // ── RENDER LLISTA ──
 function fmtTime(t) { return t ? t.slice(0,5)+' h' : ''; }
 function fmtDate(s) {
@@ -1118,19 +1127,33 @@ function renderLlista() {
     const photo = a.foto_url
       ? `<img src="${a.foto_url}" alt="${a.nom}" style="width:100%;height:100%;object-fit:cover">`
       : a.icon;
+
+    // Detectar si el dia guardat no coincideix amb la data
+    let diaCalculat = null;
+    if (a.dia_data) {
+      const [y,m,d] = a.dia_data.split('-').map(Number);
+      const dies = ['Diumenge','Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte'];
+      diaCalculat = dies[new Date(y, m-1, d).getDay()];
+    }
+    const diaIncorrecte = diaCalculat && a.dia !== diaCalculat;
+    const diaWarning = diaIncorrecte
+      ? `<span style="color:#FF9500;font-size:.7rem;font-weight:600;margin-left:4px" title="El dia no coincideix amb la data. Clica 🔄 per corregir">⚠️ hauria de ser ${diaCalculat}</span>`
+      : '';
+
     return `
       <div class="act-card">
         <div class="act-card-photo">${photo}</div>
         <div class="act-card-body">
           <div class="act-card-title">${a.nom}</div>
           <div class="act-card-meta">
-            <strong>${a.dia}</strong>${a.dia_data ? ' · '+fmtDate(a.dia_data) : ''}${time ? ' · '+time : ''}
+            <strong>${a.dia}</strong>${diaWarning}${a.dia_data ? ' · '+fmtDate(a.dia_data) : ''}${time ? ' · '+time : ''}
             ${a.lloc ? `<br>${a.lloc}` : ''}
             ${a.grups ? `<br><strong>Alumnat:</strong> ${a.grups}` : ''}
             ${a.prof ? `<br><strong>Prof:</strong> ${a.prof}` : ''}
           </div>
         </div>
         <div class="act-card-actions">
+          ${diaIncorrecte ? `<button class="btn-icon" onclick="corregirDia('${a.id}','${diaCalculat}')" title="Corregir dia a ${diaCalculat}" style="color:#FF9500;font-size:.8rem">🔄</button>` : ''}
           <button class="btn-icon edit" onclick="editarActivitat('${a.id}')" title="Editar">✏️</button>
           <button class="btn-icon del" onclick="eliminarActivitat('${a.id}')" title="Eliminar">🗑️</button>
         </div>
@@ -1222,9 +1245,11 @@ function renderBulletin(acts) {
     return;
   }
 
-  // Ordenar per dia i data, sense agrupar — cada activitat és un bloc independent
+  // Ordenar per dia real (calculat de la data) i data, sense agrupar — cada activitat és un bloc independent
   const sorted = [...acts].sort((a, b) => {
-    const ia = ORDER.indexOf(a.dia ?? ''), ib = ORDER.indexOf(b.dia ?? '');
+    const diaA = a.dia_data ? (diaDeData(a.dia_data) || a.dia || '') : (a.dia || '');
+    const diaB = b.dia_data ? (diaDeData(b.dia_data) || b.dia || '') : (b.dia || '');
+    const ia = ORDER.indexOf(diaA), ib = ORDER.indexOf(diaB);
     if (ia !== ib) return (ia<0?99:ia) - (ib<0?99:ib);
     if (a.dia_data && b.dia_data) return a.dia_data < b.dia_data ? -1 : 1;
     return 0;
@@ -1283,13 +1308,21 @@ function renderPaginaActual() {
   activarDrag();
 }
 
+function diaDeData(dia_data) {
+  if (!dia_data) return null;
+  const [y, m, d] = dia_data.split('-').map(Number);
+  const dies = ['Diumenge','Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte'];
+  return dies[new Date(y, m - 1, d).getDay()];
+}
+
 function renderBlocDia(bloc, localIdx) {
   const g = bloc.acts;
   const firstDate = g[0].dia_data;
-  const allSameDate = g.every(a => a.dia_data === firstDate);
-  const dia = g[0].dia || 'Tota la setmana';
+
+  // Sempre calcular el dia real a partir de la data; usar el camp guardat només si no hi ha data
+  const dia = firstDate ? (diaDeData(firstDate) || g[0].dia || 'Tota la setmana') : (g[0].dia || 'Tota la setmana');
   let diaLabel = dia;
-  if (allSameDate && firstDate) diaLabel = dia + ' ' + fmtDate(firstDate);
+  if (firstDate) diaLabel = dia + ' ' + fmtDate(firstDate);
 
   const tipusHdr = g[0].tipus || ((!g[0].lloc || /centre/i.test(g[0].lloc)) ? 'centre' : 'fora');
   const colorClass = tipusHdr === 'centre' ? 'centre' : 'fora';
