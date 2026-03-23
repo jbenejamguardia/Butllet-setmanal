@@ -118,6 +118,18 @@ input:focus,select:focus,textarea:focus{
 textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 
+/* Toggle centre/fora */
+.toggle-group{display:flex;border-radius:var(--rsm);overflow:hidden;border:1.5px solid var(--border);margin-bottom:10px;}
+.toggle-btn{
+  flex:1;padding:7px 6px;border:none;cursor:pointer;
+  font-family:var(--sf);font-size:.78rem;font-weight:600;
+  background:#F2F0EB;color:var(--text3);transition:all .15s;
+}
+.toggle-btn:first-child{border-right:1px solid var(--border);}
+.toggle-btn.active.centre-mode{background:var(--bordeus);color:white;}
+.toggle-btn.active.fora-mode{background:var(--green-mid);color:white;}
+.toggle-btn.active{background:var(--bordeus);color:white;}
+
 /* Upload foto */
 .upload-zone{
   border:2px dashed #D1D1D6;border-radius:var(--rsm);
@@ -525,8 +537,23 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
             </select>
           </div>
           <div>
-            <label>Data concreta</label>
+            <label>Data inici</label>
             <input type="date" id="f-dia-data" onchange="detectarDia('f-dia-data','f-dia')">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Data fi <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#aaa">(si dura +1 dia)</span></label>
+            <input type="date" id="f-dia-data-fi">
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end;">
+            <label>Tipus d'activitat</label>
+            <div class="toggle-group" id="f-tipus-group">
+              <button type="button" class="toggle-btn active" id="f-tipus-centre" onclick="setTipus('centre','f')">🏫 Centre</button>
+              <button type="button" class="toggle-btn" id="f-tipus-fora" onclick="setTipus('fora','f')">🚌 Fora</button>
+            </div>
+            <input type="hidden" id="f-tipus" value="centre">
           </div>
         </div>
 
@@ -732,7 +759,21 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
             <option>Tota la setmana</option>
           </select>
         </div>
-        <div><label>Data concreta</label><input type="date" id="m-dia-data" onchange="detectarDia('m-dia-data','m-dia')"></div>
+        <div><label>Data inici</label><input type="date" id="m-dia-data" onchange="detectarDia('m-dia-data','m-dia')"></div>
+      </div>
+      <div class="row2">
+        <div>
+          <label>Data fi <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#aaa">(si dura +1 dia)</span></label>
+          <input type="date" id="m-dia-data-fi">
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end;">
+          <label>Tipus d'activitat</label>
+          <div class="toggle-group" id="m-tipus-group">
+            <button type="button" class="toggle-btn active" id="m-tipus-centre" onclick="setTipus('centre','m')">🏫 Centre</button>
+            <button type="button" class="toggle-btn" id="m-tipus-fora" onclick="setTipus('fora','m')">🚌 Fora</button>
+          </div>
+          <input type="hidden" id="m-tipus" value="centre">
+        </div>
       </div>
       <div class="row2">
         <div><label>Hora inici</label><input type="time" id="m-hora-ini"></div>
@@ -800,6 +841,19 @@ let logoDataUrl = null;
 
 const ORDER = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Tota la setmana'];
 
+// ── TIPUS ACTIVITAT (centre/fora) ──
+function setTipus(val, prefix) {
+  document.getElementById(prefix+'-tipus').value = val;
+  const btnC = document.getElementById(prefix+'-tipus-centre');
+  const btnF = document.getElementById(prefix+'-tipus-fora');
+  btnC.classList.toggle('active', val === 'centre');
+  btnF.classList.toggle('active', val === 'fora');
+  btnC.style.background = val === 'centre' ? 'var(--bordeus)' : '';
+  btnC.style.color = val === 'centre' ? 'white' : '';
+  btnF.style.background = val === 'fora' ? 'var(--green-mid)' : '';
+  btnF.style.color = val === 'fora' ? 'white' : '';
+}
+
 // ── DETECCIÓ AUTOMÀTICA DEL DIA ──
 function detectarDia(inputId, selectId) {
   const val = document.getElementById(inputId).value;
@@ -861,7 +915,7 @@ let editingId = null;
 
 function resetForm() {
   editingId = null;
-  ['f-nom','f-dia-data','f-hora-ini','f-hora-fi','f-lloc','f-grups','f-prof','f-desc'].forEach(id => {
+  ['f-nom','f-dia-data','f-dia-data-fi','f-hora-ini','f-hora-fi','f-lloc','f-grups','f-prof','f-desc'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-dia').value = 'Dilluns';
@@ -873,6 +927,7 @@ function resetForm() {
   document.getElementById('form-mode-label').textContent = '➕ Nova activitat';
   document.getElementById('btn-submit-label').textContent = 'Afegir activitat';
   document.getElementById('btn-cancel-edit').style.display = 'none';
+  setTipus('centre', 'f');
 }
 
 function editarActivitat(id) {
@@ -882,6 +937,7 @@ function editarActivitat(id) {
   document.getElementById('f-nom').value = a.nom || '';
   document.getElementById('f-dia').value = a.dia || 'Dilluns';
   document.getElementById('f-dia-data').value = a.dia_data || '';
+  document.getElementById('f-dia-data-fi').value = a.dia_data_fi || '';
   document.getElementById('f-hora-ini').value = a.hora_ini ? a.hora_ini.slice(0,5) : '';
   document.getElementById('f-hora-fi').value = a.hora_fi ? a.hora_fi.slice(0,5) : '';
   document.getElementById('f-lloc').value = a.lloc || '';
@@ -889,6 +945,7 @@ function editarActivitat(id) {
   document.getElementById('f-prof').value = a.prof || '';
   document.getElementById('f-desc').value = a.descripcio || '';
   document.getElementById('f-icon').value = a.icon || '📝';
+  setTipus(a.tipus || 'centre', 'f');
   currentFoto = null;
   // Show current photo if any
   const fp = document.getElementById('foto-preview');
@@ -950,15 +1007,17 @@ async function submitActivitat() {
 
     const payload = {
       nom,
-      dia:        document.getElementById('f-dia').value,
-      dia_data:   document.getElementById('f-dia-data').value || null,
-      hora_ini:   document.getElementById('f-hora-ini').value || null,
-      hora_fi:    document.getElementById('f-hora-fi').value || null,
-      lloc:       document.getElementById('f-lloc').value.trim() || null,
-      grups:      document.getElementById('f-grups').value.trim() || null,
-      prof:       document.getElementById('f-prof').value.trim() || null,
-      descripcio: document.getElementById('f-desc').value.trim() || null,
-      icon:       document.getElementById('f-icon').value,
+      dia:          document.getElementById('f-dia').value,
+      dia_data:     document.getElementById('f-dia-data').value || null,
+      dia_data_fi:  document.getElementById('f-dia-data-fi').value || null,
+      hora_ini:     document.getElementById('f-hora-ini').value || null,
+      hora_fi:      document.getElementById('f-hora-fi').value || null,
+      lloc:         document.getElementById('f-lloc').value.trim() || null,
+      grups:        document.getElementById('f-grups').value.trim() || null,
+      prof:         document.getElementById('f-prof').value.trim() || null,
+      descripcio:   document.getElementById('f-desc').value.trim() || null,
+      icon:         document.getElementById('f-icon').value,
+      tipus:        document.getElementById('f-tipus').value,
       foto_url,
     };
 
@@ -1103,10 +1162,12 @@ async function generarButlleti() {
 
   updateBulletinHeader();
 
-  // Filtra activitats de la setmana per dia_data
+  // Filtra activitats de la setmana per dia_data (inclou multi-dia que es solapen)
   let filtrades = activitats.filter(a => {
     if (!a.dia_data) return true; // sense data concreta: inclou sempre
-    return a.dia_data >= ini && a.dia_data <= fi;
+    const fi_act = a.dia_data_fi || a.dia_data;
+    // L'activitat es solapa amb la setmana si comença abans del fi i acaba després de l'inici
+    return a.dia_data <= fi && fi_act >= ini;
   });
 
   // Afegir extres
@@ -1122,13 +1183,19 @@ function renderBulletin(acts) {
     return;
   }
 
-  // Ordenar: Dilluns→…→Divendres→Tota la setmana
+  // Expandir activitats multi-dia: cada activitat amb dia_data i dia_data_fi
+  // apareixerà com un bloc únic però amb el rang de dates indicat
+  // (no es duplica per dia, es mostra com un bloc especial)
+
+  // Ordenar: Dilluns→…→Divendres→Tota la setmana; multi-dia primer per dia_data
   const sorted = [...acts].sort((a, b) => {
     const ia = ORDER.indexOf(a.dia ?? a.dia), ib = ORDER.indexOf(b.dia ?? b.dia);
-    return (ia<0?99:ia) - (ib<0?99:ib);
+    if (ia !== ib) return (ia<0?99:ia) - (ib<0?99:ib);
+    if (a.dia_data && b.dia_data) return a.dia_data < b.dia_data ? -1 : 1;
+    return 0;
   });
 
-  // Agrupar per dia
+  // Agrupar per dia (multi-dia agrupats per dia inici)
   const groups = {};
   sorted.forEach(a => {
     const key = a.dia || 'Tota la setmana';
@@ -1143,19 +1210,42 @@ function renderBulletin(acts) {
 
   body.innerHTML = keys.map(dia => {
     const g = groups[dia];
-    const diaLabel = dia + (g[0].dia_data ? ' '+fmtDate(g[0].dia_data) : '');
-    const llocH = g[0].lloc || 'Centre';
 
-    // Determina color: centre (buit o conté "centre") → bordeus; fora → verd
-    const esCentre = !g[0].lloc || /centre/i.test(g[0].lloc);
-    const colorClass = esCentre ? 'centre' : 'fora';
+    // Label de dia: si totes les activitats comparteixen el mateix dia_data usa-la
+    const firstDate = g[0].dia_data;
+    const allSameDate = g.every(a => a.dia_data === firstDate);
+    let diaLabel = dia;
+    if (allSameDate && firstDate) {
+      diaLabel = dia + ' ' + fmtDate(firstDate);
+    }
+
+    // Determina color del header del dia: si hi ha una activitat centre → bordeus; sinó → verd
+    // (usa el tipus explícit si existeix; sinó, llegeix del lloc com a fallback)
+    const tipusHdr = g[0].tipus || ((!g[0].lloc || /centre/i.test(g[0].lloc)) ? 'centre' : 'fora');
+    const colorClass = tipusHdr === 'centre' ? 'centre' : 'fora';
+    const llocH = g[0].lloc || (tipusHdr === 'centre' ? 'Centre' : 'Sortida');
 
     const cards = g.map(a => {
-      const aC = !a.lloc || /centre/i.test(a.lloc) ? 'centre' : 'fora';
+      const tipusA = a.tipus || ((!a.lloc || /centre/i.test(a.lloc)) ? 'centre' : 'fora');
+      const aC = tipusA === 'centre' ? 'centre' : 'fora';
       const fotoUrl = a.foto_url || null;
-      const time = a.hora_ini && a.hora_fi
+
+      // Hora / rang de dies
+      const timeStr = a.hora_ini && a.hora_fi
         ? `${fmtTime(a.hora_ini)} – ${fmtTime(a.hora_fi)}`
         : a.hora_ini ? fmtTime(a.hora_ini) : '';
+
+      // Badge multi-dia
+      let multiDiaBadge = '';
+      if (a.dia_data && a.dia_data_fi && a.dia_data_fi > a.dia_data) {
+        const badgeColor = tipusA === 'centre' ? 'var(--bordeus)' : 'var(--green-mid)';
+        multiDiaBadge = `<span style="
+          display:inline-block;margin-left:6px;padding:1px 7px;
+          border-radius:10px;font-size:.65rem;font-weight:700;
+          background:${badgeColor};color:white;vertical-align:middle;white-space:nowrap;
+        ">📅 ${fmtDate(a.dia_data)} – ${fmtDate(a.dia_data_fi)}</span>`;
+      }
+
       const media = fotoUrl
         ? `<img src="${fotoUrl}" alt="${a.nom}">`
         : `<div class="act-photo-icon">${a.icon || '📝'}</div>`;
@@ -1164,8 +1254,8 @@ function renderBulletin(acts) {
           <div class="act-photo">${media}</div>
           <div class="act-body">
             <div class="act-name-row">
-              <div class="act-name ${aC}">${a.nom}</div>
-              ${time ? `<div class="act-time ${aC}">${time}</div>` : ''}
+              <div class="act-name ${aC}">${a.nom}${multiDiaBadge}</div>
+              ${timeStr ? `<div class="act-time ${aC}">${timeStr}</div>` : ''}
             </div>
             <div class="act-meta">
               ${a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
@@ -1226,7 +1316,7 @@ function obrirModalEditExtra(idx) {
 }
 
 function limpiarModal() {
-  ['m-nom','m-dia-data','m-hora-ini','m-hora-fi','m-lloc','m-grups','m-prof','m-desc'].forEach(id =>
+  ['m-nom','m-dia-data','m-dia-data-fi','m-hora-ini','m-hora-fi','m-lloc','m-grups','m-prof','m-desc'].forEach(id =>
     document.getElementById(id).value = '');
   document.getElementById('m-dia').value = 'Dilluns';
   document.getElementById('m-icon').value = '📚';
@@ -1234,12 +1324,14 @@ function limpiarModal() {
   document.getElementById('edit-foto-preview').style.display = 'none';
   document.getElementById('m-upload-hint').style.display = 'block';
   document.getElementById('m-foto-info').style.display = 'none';
+  setTipus('centre', 'm');
 }
 
 function omplirModal(a) {
   document.getElementById('m-nom').value = a.nom || '';
   document.getElementById('m-dia').value = a.dia || 'Dilluns';
   document.getElementById('m-dia-data').value = a.dia_data || '';
+  document.getElementById('m-dia-data-fi').value = a.dia_data_fi || '';
   document.getElementById('m-hora-ini').value = a.hora_ini ? a.hora_ini.slice(0,5) : '';
   document.getElementById('m-hora-fi').value = a.hora_fi ? a.hora_fi.slice(0,5) : '';
   document.getElementById('m-lloc').value = a.lloc || '';
@@ -1247,6 +1339,7 @@ function omplirModal(a) {
   document.getElementById('m-prof').value = a.prof || '';
   document.getElementById('m-desc').value = a.descripcio || a.desc || '';
   document.getElementById('m-icon').value = a.icon || '📝';
+  setTipus(a.tipus || 'centre', 'm');
   document.getElementById('m-foto').value = '';
   const pp = document.getElementById('edit-foto-preview');
   if (a.foto_url) {
@@ -1285,16 +1378,18 @@ function guardarModal() {
 
   const extra = {
     nom,
-    dia:        document.getElementById('m-dia').value,
-    dia_data:   document.getElementById('m-dia-data').value || null,
-    hora_ini:   document.getElementById('m-hora-ini').value || null,
-    hora_fi:    document.getElementById('m-hora-fi').value || null,
-    lloc:       document.getElementById('m-lloc').value.trim() || null,
-    grups:      document.getElementById('m-grups').value.trim() || null,
-    prof:       document.getElementById('m-prof').value.trim() || null,
-    desc:       document.getElementById('m-desc').value.trim() || null,
-    icon:       document.getElementById('m-icon').value,
-    foto_url:   modalFoto !== undefined ? modalFoto : (modalExtraIdx !== null ? extres[modalExtraIdx].foto_url : null),
+    dia:          document.getElementById('m-dia').value,
+    dia_data:     document.getElementById('m-dia-data').value || null,
+    dia_data_fi:  document.getElementById('m-dia-data-fi').value || null,
+    hora_ini:     document.getElementById('m-hora-ini').value || null,
+    hora_fi:      document.getElementById('m-hora-fi').value || null,
+    lloc:         document.getElementById('m-lloc').value.trim() || null,
+    grups:        document.getElementById('m-grups').value.trim() || null,
+    prof:         document.getElementById('m-prof').value.trim() || null,
+    desc:         document.getElementById('m-desc').value.trim() || null,
+    icon:         document.getElementById('m-icon').value,
+    tipus:        document.getElementById('m-tipus').value,
+    foto_url:     modalFoto !== undefined ? modalFoto : (modalExtraIdx !== null ? extres[modalExtraIdx].foto_url : null),
   };
 
   if (modalMode === 'extra-new') {
@@ -1344,34 +1439,98 @@ function toast(msg, error=false) {
   t._t = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2400);
 }
 
-// ── EXPORTAR IMATGE ──
+// ── EXPORTAR IMATGE (multi-pàgina, sense tallar requadres) ──
 async function exportarImatge() {
   const btn = document.getElementById('btn-imatge');
   btn.disabled = true;
   btn.textContent = '⏳ Generant imatge…';
   try {
-    const node = document.getElementById('bulletin');
-    const canvas = await html2canvas(node, {
-      scale: 2,
+    const bulletin = document.getElementById('bulletin');
+    const PAGE_H = 900; // pixels per pàgina (a escala 1x, multiplicat per scale)
+    const SCALE  = 2;
+
+    // Capturar tot el butlletí a alta resolució
+    const fullCanvas = await html2canvas(bulletin, {
+      scale: SCALE,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#FAFAF7',
       logging: false,
       onclone: (doc) => {
-        // Assegura que tots els elements clonats mostren els colors de fons
         doc.querySelectorAll('*').forEach(el => {
           el.style.webkitPrintColorAdjust = 'exact';
           el.style.printColorAdjust = 'exact';
         });
       }
     });
-    const link = document.createElement('a');
+
+    const totalW = fullCanvas.width;
+    const totalH = fullCanvas.height;
+    const pageHpx = PAGE_H * SCALE; // pàgina en pixels canvas
+
+    // Identificar on comencen i acaben els day-blocks per no tallar-los
+    const dayBlocks = bulletin.querySelectorAll('.day-block');
+    const bullRect  = bulletin.getBoundingClientRect();
+
+    // Llista de talls permesos (entre day-blocks)
+    // Recollim els límits inferior de cada bloc
+    const blockBoundaries = [0]; // sempre podem tallar al principi
+    dayBlocks.forEach(bl => {
+      const r = bl.getBoundingClientRect();
+      const topPx    = (r.top  - bullRect.top)  * SCALE;
+      const bottomPx = (r.bottom - bullRect.top) * SCALE;
+      blockBoundaries.push(Math.round(topPx));    // poden tallar ABANS d'un bloc
+      blockBoundaries.push(Math.round(bottomPx)); // o DESPRÉS d'un bloc
+    });
+    blockBoundaries.push(totalH);
+
+    // Dividir en pàgines: cada pàgina ha de tenir almenys un bloc complet
+    const pages = [];
+    let curY = 0;
+    while (curY < totalH) {
+      // Buscar el millor tall dins [curY + pageHpx*0.5, curY + pageHpx]
+      const minCut = curY + pageHpx * 0.4;
+      const maxCut = curY + pageHpx;
+
+      // El tall ideal: el boundary més gran <= maxCut i >= minCut
+      const validCuts = blockBoundaries.filter(b => b > curY && b <= maxCut && b >= minCut);
+      let cutY;
+      if (validCuts.length > 0) {
+        cutY = Math.max(...validCuts);
+      } else {
+        // No hi ha tall ideal: forcem al primer boundary > curY
+        const anyNext = blockBoundaries.filter(b => b > curY);
+        cutY = anyNext.length ? Math.min(...anyNext) : totalH;
+      }
+      cutY = Math.min(cutY, totalH);
+
+      pages.push({ y: curY, h: cutY - curY });
+      curY = cutY;
+      if (cutY >= totalH) break;
+    }
+
+    // Descarregar una imatge per pàgina
     const mes = document.getElementById('b-mes').value.toLowerCase();
     const ini = document.getElementById('b-ini').value.replace(/-/g,'');
-    link.download = `butlleti_${mes}${ini ? '_'+ini : ''}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    toast('✅ Imatge exportada correctament');
+    const baseNom = `butlleti_${mes}${ini ? '_'+ini : ''}`;
+
+    for (let i = 0; i < pages.length; i++) {
+      const { y, h } = pages[i];
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width  = totalW;
+      pageCanvas.height = h;
+      const ctx = pageCanvas.getContext('2d');
+      ctx.drawImage(fullCanvas, 0, y, totalW, h, 0, 0, totalW, h);
+
+      const link = document.createElement('a');
+      link.download = pages.length > 1 ? `${baseNom}_p${i+1}.png` : `${baseNom}.png`;
+      link.href = pageCanvas.toDataURL('image/png');
+      link.click();
+      // Petit retard entre descàrregues perquè el navegador les processi
+      if (i < pages.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+
+    toast(pages.length > 1 ? `✅ ${pages.length} imatges exportades` : '✅ Imatge exportada correctament');
   } catch(e) {
     toast('❌ Error exportant: ' + e.message, true);
   } finally {
