@@ -928,14 +928,25 @@ function showPage(id) {
 
 // ── CONNEXIÓ / CÀRREGA ──
 async function init() {
+  document.getElementById('conn-status').textContent = 'Connectant…';
   try {
     await carregarActivitats();
     document.getElementById('conn-status').textContent = 'Connectat';
+    document.querySelector('.status-dot').style.background = '#85C496';
+    document.querySelector('.status-dot').style.animation = 'pulse 2s infinite';
   } catch(e) {
-    document.getElementById('conn-status').textContent = 'Error de connexió';
-    document.querySelector('.status-dot').style.background = '#FF3B30';
-    document.querySelector('.status-dot').style.animation = 'none';
-    toast('❌ Error connectant amb Supabase', true);
+    // Reintentar una vegada abans de mostrar error
+    try {
+      await new Promise(r => setTimeout(r, 2000));
+      await carregarActivitats();
+      document.getElementById('conn-status').textContent = 'Connectat';
+      document.querySelector('.status-dot').style.background = '#85C496';
+    } catch(e2) {
+      document.getElementById('conn-status').textContent = 'Sense connexió';
+      document.querySelector('.status-dot').style.background = '#FF9500';
+      document.querySelector('.status-dot').style.animation = 'none';
+      // No mostrar toast d'error — no alarmar l'usuari mentre escriu
+    }
   }
 }
 
@@ -1337,31 +1348,37 @@ function renderBlocDia(bloc, globalIdx) {
   const cards = g.map(a => {
     const tipusA = a.tipus || ((!a.lloc || /centre/i.test(a.lloc)) ? 'centre' : 'fora');
     const aC = tipusA === 'centre' ? 'centre' : 'fora';
+    const borderC = tipusA === 'centre' ? '#7B1D1D' : '#5A9E6F';
     const timeStr = a.hora_ini && a.hora_fi
       ? `${fmtTime(a.hora_ini)} – ${fmtTime(a.hora_fi)}`
       : a.hora_ini ? fmtTime(a.hora_ini) : '';
     let multiDiaBadge = '';
     if (a.dia_data && a.dia_data_fi && a.dia_data_fi > a.dia_data) {
-      const bc = tipusA === 'centre' ? 'var(--bordeus)' : 'var(--green-mid)';
+      const bc = tipusA === 'centre' ? '#7B1D1D' : '#5A9E6F';
       multiDiaBadge = `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:.65rem;font-weight:700;background:${bc};color:white;vertical-align:middle;white-space:nowrap;">📅 ${fmtDate(a.dia_data)} – ${fmtDate(a.dia_data_fi)}</span>`;
     }
-    const media = a.foto_url
-      ? `<img src="${a.foto_url}" alt="${a.nom}" style="width:92px;height:100%;object-fit:cover;object-position:center;display:block;flex-shrink:0;">`
-      : `<div class="act-photo-icon">${a.icon || '📝'}</div>`;
-    return `<div class="act-row">
-      <div class="act-photo">${media}</div>
-      <div class="act-body">
-        <div class="act-name-row">
-          <div class="act-name ${aC}">${a.nom}${multiDiaBadge}</div>
-          ${timeStr ? `<div class="act-time ${aC}">${timeStr}</div>` : ''}
-        </div>
-        <div class="act-meta">
-          ${a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
-          ${a.prof ? `<div class="mr"><strong>Professorat:</strong>&nbsp;${a.prof}</div>` : ''}
-          ${(a.descripcio||a.desc) ? `<div><em>${a.descripcio||a.desc}</em></div>` : ''}
-        </div>
-      </div>
-    </div>`;
+
+    // Foto com a background-image de la cel·la — mai es deforma
+    const photoCell = a.foto_url
+      ? `<td style="width:110px;min-width:110px;padding:0;background-image:url('${a.foto_url}');background-size:cover;background-position:center;background-repeat:no-repeat;"></td>`
+      : `<td style="width:110px;min-width:110px;padding:0;background:#EDF7EF;text-align:center;font-size:1.9rem;opacity:.45;">${a.icon || '📝'}</td>`;
+
+    return `<table style="width:100%;border-collapse:collapse;border:1px solid #E5E5EA;border-top:none;background:white;">
+      <tr>
+        ${photoCell}
+        <td style="padding:11px 13px;vertical-align:top;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px;">
+            <div style="font-size:.95rem;font-weight:700;color:#1C1C1E;letter-spacing:-.01em;border-left:2.5px solid ${borderC};padding-left:7px;line-height:1.25;">${a.nom}${multiDiaBadge}</div>
+            ${timeStr ? `<div style="font-size:.75rem;font-weight:700;color:${borderC};white-space:nowrap;flex-shrink:0;padding-top:2px;">${timeStr}</div>` : ''}
+          </div>
+          <div style="font-size:.78rem;color:#3A3A3C;line-height:1.55;padding-left:10px;">
+            ${a.grups ? `<div style="display:flex;gap:3px;"><strong style="font-weight:600;color:#1C1C1E;">Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
+            ${a.prof ? `<div style="display:flex;gap:3px;"><strong style="font-weight:600;color:#1C1C1E;">Professorat:</strong>&nbsp;${a.prof}</div>` : ''}
+            ${(a.descripcio||a.desc) ? `<div><em style="font-style:italic;color:#6C6C70;">${a.descripcio||a.desc}</em></div>` : ''}
+          </div>
+        </td>
+      </tr>
+    </table>`;
   }).join('');
 
   return `<div class="day-block" draggable="true" data-global-idx="${globalIdx}">
@@ -1491,14 +1508,6 @@ async function generarPaginesA4(scale = 2) {
   for (let i = 0; i < totsElsBlocs.length; i++) {
     const blocHTML = blocHtmlAmbBase64(totsElsBlocs[i], i);
     wrap.innerHTML = `<div style="width:${CONTENT_W}px;padding:0 ${INNER_PAD}px 2px;box-sizing:border-box;background:#FAFAF7;">${blocHTML}</div>`;
-    // Forçar mides correctes a les imatges: amplada fixa, alçada = alçada del row
-    wrap.querySelectorAll('.act-photo').forEach(ph => {
-      const rowH = ph.parentElement.offsetHeight || 92;
-      const img  = ph.querySelector('img');
-      if (img) {
-        img.style.cssText = `width:92px;height:${rowH}px;object-fit:cover;object-position:center;display:block;`;
-      }
-    });
     await new Promise(r => setTimeout(r, 60));
     const c = await h2c(wrap.firstChild);
     blocCanvases.push(c);
