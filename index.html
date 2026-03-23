@@ -269,9 +269,28 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .p2-preview-lbl{
   align-self:flex-start;font-size:.7rem;font-weight:700;
   color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.12em;
-  margin-bottom:14px;display:flex;align-items:center;gap:8px;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
 }
 .p2-preview-lbl::after{content:'';width:50px;height:1px;background:rgba(255,255,255,.25);}
+
+/* Controls de pàgina */
+.page-nav{
+  display:flex;align-items:center;gap:8px;margin-bottom:12px;
+  background:rgba(255,255,255,.15);border-radius:20px;padding:4px 10px;
+}
+.page-nav span{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.85);}
+.page-nav-btn{
+  background:rgba(255,255,255,.2);border:none;cursor:pointer;
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-size:.85rem;transition:all .15s;
+}
+.page-nav-btn:hover{background:rgba(255,255,255,.35);}
+.page-nav-btn:disabled{opacity:.3;cursor:not-allowed;}
+.drag-hint{
+  font-size:.68rem;color:rgba(255,255,255,.45);margin-bottom:8px;
+  letter-spacing:.04em;
+}
 
 /* BUTLLETÍ */
 #bulletin{
@@ -297,7 +316,9 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .bull-nav-icons{display:flex;gap:10px;}
 .bull-nav-icons svg{width:17px;height:17px;}
 .bull-body{padding:14px 16px 6px;background:var(--cream);}
-.day-block{margin-bottom:13px;}
+.day-block{margin-bottom:13px;cursor:grab;}
+.day-block.dragging{opacity:.4;cursor:grabbing;}
+.day-block.drag-over{outline:2px dashed var(--green-mid);border-radius:8px;}
 .day-hdr{
   border-radius:7px 7px 0 0;
   padding:8px 13px;display:flex;justify-content:space-between;align-items:center;
@@ -533,6 +554,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
             <select id="f-dia">
               <option>Dilluns</option><option>Dimarts</option><option>Dimecres</option>
               <option>Dijous</option><option>Divendres</option>
+              <option>Dissabte</option><option>Diumenge</option>
               <option>Tota la setmana</option>
             </select>
           </div>
@@ -697,8 +719,14 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
     </div>
 
     <!-- Previsualització -->
-    <div class="p2-preview">
+    <div class="p2-preview" id="p2-preview">
       <div class="p2-preview-lbl">Previsualització en temps real</div>
+      <div class="page-nav" id="page-nav" style="display:none">
+        <button class="page-nav-btn" id="btn-prev-page" onclick="canviarPagina(-1)" disabled>◀</button>
+        <span id="page-indicator">Pàgina 1 / 1</span>
+        <button class="page-nav-btn" id="btn-next-page" onclick="canviarPagina(1)" disabled>▶</button>
+      </div>
+      <div class="drag-hint" id="drag-hint" style="display:none">↕ Arrossega els blocs de dies per reorganitzar-los</div>
       <div id="bulletin">
         <div class="bull-dots">
           <svg width="100%" height="100%" viewBox="0 0 620 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style="opacity:.15">
@@ -756,6 +784,7 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
           <select id="m-dia">
             <option>Dilluns</option><option>Dimarts</option><option>Dimecres</option>
             <option>Dijous</option><option>Divendres</option>
+            <option>Dissabte</option><option>Diumenge</option>
             <option>Tota la setmana</option>
           </select>
         </div>
@@ -839,7 +868,7 @@ let modalFoto = undefined;   // undefined=no change, null=remove, string=new
 let modalExtraIdx = null;
 let logoDataUrl = null;
 
-const ORDER = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Tota la setmana'];
+const ORDER = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge','Tota la setmana'];
 
 // ── TIPUS ACTIVITAT (centre/fora) ──
 function setTipus(val, prefix) {
@@ -865,7 +894,7 @@ function detectarDia(inputId, selectId) {
   const nomDia = diesSetmana[data.getDay()];
   const select = document.getElementById(selectId);
   // Si és diumenge o dissabte, no canviem (no estan a la llista)
-  if (['Dilluns','Dimarts','Dimecres','Dijous','Divendres'].includes(nomDia)) {
+  if (['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'].includes(nomDia)) {
     select.value = nomDia;
   }
 }
@@ -1176,104 +1205,182 @@ async function generarButlleti() {
   renderBulletin(totes);
 }
 
+// ── PAGINACIÓ i DRAG ──
+let totsElsBlocs = [];   // llista ordenada de { dia, acts } — l'usuari pot reordenar
+let paginaActual = 0;    // índex de pàgina visible (0-based)
+let paginacio = [];      // array de arrays d'índexos: [[0,1],[2,3],...]
+
+const BLOCS_PER_PAGINA = 3; // dies per pàgina (ajustable)
+
 function renderBulletin(acts) {
   const body = document.getElementById('bull-body');
   if (!acts || !acts.length) {
     body.innerHTML = '<div class="bull-empty"><div class="be">📋</div><p>No hi ha activitats per a aquesta setmana.</p></div>';
+    document.getElementById('page-nav').style.display = 'none';
+    document.getElementById('drag-hint').style.display = 'none';
+    totsElsBlocs = [];
     return;
   }
 
-  // Expandir activitats multi-dia: cada activitat amb dia_data i dia_data_fi
-  // apareixerà com un bloc únic però amb el rang de dates indicat
-  // (no es duplica per dia, es mostra com un bloc especial)
-
-  // Ordenar: Dilluns→…→Divendres→Tota la setmana; multi-dia primer per dia_data
+  // Ordenar i agrupar per dia
   const sorted = [...acts].sort((a, b) => {
-    const ia = ORDER.indexOf(a.dia ?? a.dia), ib = ORDER.indexOf(b.dia ?? b.dia);
+    const ia = ORDER.indexOf(a.dia ?? ''), ib = ORDER.indexOf(b.dia ?? '');
     if (ia !== ib) return (ia<0?99:ia) - (ib<0?99:ib);
     if (a.dia_data && b.dia_data) return a.dia_data < b.dia_data ? -1 : 1;
     return 0;
   });
 
-  // Agrupar per dia (multi-dia agrupats per dia inici)
   const groups = {};
+  const groupOrder = [];
   sorted.forEach(a => {
-    const key = a.dia || 'Tota la setmana';
-    if (!groups[key]) groups[key] = [];
+    const key = (a.dia || 'Tota la setmana') + '||' + (a.dia_data || '');
+    if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
     groups[key].push(a);
   });
 
-  const keys = Object.keys(groups).sort((a,b) => {
-    const ia=ORDER.indexOf(a), ib=ORDER.indexOf(b);
-    return (ia<0?99:ia)-(ib<0?99:ib);
-  });
+  totsElsBlocs = groupOrder.map(key => ({ key, acts: groups[key] }));
+  paginaActual = 0;
+  calcularPaginacio();
+  renderPaginaActual();
+  activarDrag();
+}
 
-  body.innerHTML = keys.map(dia => {
-    const g = groups[dia];
+function calcularPaginacio() {
+  paginacio = [];
+  for (let i = 0; i < totsElsBlocs.length; i += BLOCS_PER_PAGINA) {
+    paginacio.push(totsElsBlocs.slice(i, i + BLOCS_PER_PAGINA));
+  }
+  if (paginacio.length === 0) paginacio = [[]];
+  // Assegurar que paginaActual és vàlid
+  if (paginaActual >= paginacio.length) paginaActual = paginacio.length - 1;
+  actualitzarNavPagina();
+}
 
-    // Label de dia: si totes les activitats comparteixen el mateix dia_data usa-la
-    const firstDate = g[0].dia_data;
-    const allSameDate = g.every(a => a.dia_data === firstDate);
-    let diaLabel = dia;
-    if (allSameDate && firstDate) {
-      diaLabel = dia + ' ' + fmtDate(firstDate);
+function actualitzarNavPagina() {
+  const nav = document.getElementById('page-nav');
+  const hint = document.getElementById('drag-hint');
+  if (paginacio.length <= 1 && totsElsBlocs.length <= BLOCS_PER_PAGINA) {
+    nav.style.display = 'none';
+  } else {
+    nav.style.display = 'flex';
+    document.getElementById('page-indicator').textContent =
+      `Pàgina ${paginaActual + 1} / ${paginacio.length}`;
+    document.getElementById('btn-prev-page').disabled = paginaActual === 0;
+    document.getElementById('btn-next-page').disabled = paginaActual === paginacio.length - 1;
+  }
+  hint.style.display = totsElsBlocs.length > 0 ? 'block' : 'none';
+}
+
+function canviarPagina(delta) {
+  paginaActual = Math.max(0, Math.min(paginacio.length - 1, paginaActual + delta));
+  actualitzarNavPagina();
+  renderPaginaActual();
+  // Scroll cap amunt de la previsualització
+  document.getElementById('p2-preview').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderPaginaActual() {
+  const body = document.getElementById('bull-body');
+  const blocs = paginacio[paginaActual] || [];
+  if (!blocs.length) {
+    body.innerHTML = '<div class="bull-empty"><div class="be">📋</div><p>No hi ha activitats per a aquesta pàgina.</p></div>';
+    return;
+  }
+  body.innerHTML = blocs.map((bloc, idx) => renderBlocDia(bloc, idx)).join('');
+  activarDrag();
+}
+
+function renderBlocDia(bloc, localIdx) {
+  const g = bloc.acts;
+  const firstDate = g[0].dia_data;
+  const allSameDate = g.every(a => a.dia_data === firstDate);
+  const dia = g[0].dia || 'Tota la setmana';
+  let diaLabel = dia;
+  if (allSameDate && firstDate) diaLabel = dia + ' ' + fmtDate(firstDate);
+
+  const tipusHdr = g[0].tipus || ((!g[0].lloc || /centre/i.test(g[0].lloc)) ? 'centre' : 'fora');
+  const colorClass = tipusHdr === 'centre' ? 'centre' : 'fora';
+  const llocH = g[0].lloc || (tipusHdr === 'centre' ? 'Centre' : 'Sortida');
+
+  // Índex global dins totsElsBlocs per al drag
+  const globalIdx = paginaActual * BLOCS_PER_PAGINA + localIdx;
+
+  const cards = g.map(a => {
+    const tipusA = a.tipus || ((!a.lloc || /centre/i.test(a.lloc)) ? 'centre' : 'fora');
+    const aC = tipusA === 'centre' ? 'centre' : 'fora';
+    const fotoUrl = a.foto_url || null;
+    const timeStr = a.hora_ini && a.hora_fi
+      ? `${fmtTime(a.hora_ini)} – ${fmtTime(a.hora_fi)}`
+      : a.hora_ini ? fmtTime(a.hora_ini) : '';
+
+    let multiDiaBadge = '';
+    if (a.dia_data && a.dia_data_fi && a.dia_data_fi > a.dia_data) {
+      const badgeColor = tipusA === 'centre' ? 'var(--bordeus)' : 'var(--green-mid)';
+      multiDiaBadge = `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:.65rem;font-weight:700;background:${badgeColor};color:white;vertical-align:middle;white-space:nowrap;">📅 ${fmtDate(a.dia_data)} – ${fmtDate(a.dia_data_fi)}</span>`;
     }
 
-    // Determina color del header del dia: si hi ha una activitat centre → bordeus; sinó → verd
-    // (usa el tipus explícit si existeix; sinó, llegeix del lloc com a fallback)
-    const tipusHdr = g[0].tipus || ((!g[0].lloc || /centre/i.test(g[0].lloc)) ? 'centre' : 'fora');
-    const colorClass = tipusHdr === 'centre' ? 'centre' : 'fora';
-    const llocH = g[0].lloc || (tipusHdr === 'centre' ? 'Centre' : 'Sortida');
+    const media = fotoUrl
+      ? `<img src="${fotoUrl}" alt="${a.nom}">`
+      : `<div class="act-photo-icon">${a.icon || '📝'}</div>`;
 
-    const cards = g.map(a => {
-      const tipusA = a.tipus || ((!a.lloc || /centre/i.test(a.lloc)) ? 'centre' : 'fora');
-      const aC = tipusA === 'centre' ? 'centre' : 'fora';
-      const fotoUrl = a.foto_url || null;
-
-      // Hora / rang de dies
-      const timeStr = a.hora_ini && a.hora_fi
-        ? `${fmtTime(a.hora_ini)} – ${fmtTime(a.hora_fi)}`
-        : a.hora_ini ? fmtTime(a.hora_ini) : '';
-
-      // Badge multi-dia
-      let multiDiaBadge = '';
-      if (a.dia_data && a.dia_data_fi && a.dia_data_fi > a.dia_data) {
-        const badgeColor = tipusA === 'centre' ? 'var(--bordeus)' : 'var(--green-mid)';
-        multiDiaBadge = `<span style="
-          display:inline-block;margin-left:6px;padding:1px 7px;
-          border-radius:10px;font-size:.65rem;font-weight:700;
-          background:${badgeColor};color:white;vertical-align:middle;white-space:nowrap;
-        ">📅 ${fmtDate(a.dia_data)} – ${fmtDate(a.dia_data_fi)}</span>`;
-      }
-
-      const media = fotoUrl
-        ? `<img src="${fotoUrl}" alt="${a.nom}">`
-        : `<div class="act-photo-icon">${a.icon || '📝'}</div>`;
-      return `
-        <div class="act-row">
-          <div class="act-photo">${media}</div>
-          <div class="act-body">
-            <div class="act-name-row">
-              <div class="act-name ${aC}">${a.nom}${multiDiaBadge}</div>
-              ${timeStr ? `<div class="act-time ${aC}">${timeStr}</div>` : ''}
-            </div>
-            <div class="act-meta">
-              ${a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
-              ${a.prof ? `<div class="mr"><strong>Professorat:</strong>&nbsp;${a.prof}</div>` : ''}
-              ${(a.descripcio||a.desc) ? `<div><em>${a.descripcio||a.desc}</em></div>` : ''}
-            </div>
+    return `
+      <div class="act-row">
+        <div class="act-photo">${media}</div>
+        <div class="act-body">
+          <div class="act-name-row">
+            <div class="act-name ${aC}">${a.nom}${multiDiaBadge}</div>
+            ${timeStr ? `<div class="act-time ${aC}">${timeStr}</div>` : ''}
           </div>
-        </div>`;
-    }).join('');
-
-    return `<div class="day-block">
-      <div class="day-hdr ${colorClass}">
-        <span class="dn">${diaLabel}</span>
-        <span class="dl">${llocH}</span>
-      </div>
-      ${cards}
-    </div>`;
+          <div class="act-meta">
+            ${a.grups ? `<div class="mr"><strong>Grups alumnat:</strong>&nbsp;${a.grups}</div>` : ''}
+            ${a.prof ? `<div class="mr"><strong>Professorat:</strong>&nbsp;${a.prof}</div>` : ''}
+            ${(a.descripcio||a.desc) ? `<div><em>${a.descripcio||a.desc}</em></div>` : ''}
+          </div>
+        </div>
+      </div>`;
   }).join('');
+
+  return `<div class="day-block" draggable="true" data-global-idx="${globalIdx}">
+    <div class="day-hdr ${colorClass}">
+      <span class="dn">${diaLabel}</span>
+      <span class="dl">${llocH}</span>
+    </div>
+    ${cards}
+  </div>`;
+}
+
+// ── DRAG & DROP per reordenar blocs ──
+let dragSrcIdx = null;
+
+function activarDrag() {
+  document.querySelectorAll('.day-block[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      dragSrcIdx = parseInt(el.dataset.globalIdx);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('.day-block').forEach(b => b.classList.remove('drag-over'));
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.day-block').forEach(b => b.classList.remove('drag-over'));
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      const destIdx = parseInt(el.dataset.globalIdx);
+      if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
+      // Reordenar totsElsBlocs
+      const moved = totsElsBlocs.splice(dragSrcIdx, 1)[0];
+      totsElsBlocs.splice(destIdx, 0, moved);
+      calcularPaginacio();
+      renderPaginaActual();
+      dragSrcIdx = null;
+    });
+  });
 }
 
 // ── LOGO ──
@@ -1439,141 +1546,63 @@ function toast(msg, error=false) {
   t._t = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(8px)'; }, 2400);
 }
 
-// ── EXPORTAR IMATGE (multi-pàgina, sense tallar requadres) ──
+// ── EXPORTAR IMATGE (una imatge per pàgina, sense retallar) ──
 async function exportarImatge() {
   const btn = document.getElementById('btn-imatge');
   btn.disabled = true;
-  btn.textContent = '⏳ Generant imatge…';
 
-  const bulletin  = document.getElementById('bulletin');
-  const preview   = document.getElementById('p2-preview') || bulletin.closest('.p2-preview');
-
-  // Guardar estils originals
-  const origBulletinStyle = {
-    width:     bulletin.style.width,
-    maxWidth:  bulletin.style.maxWidth,
-    position:  bulletin.style.position,
-    left:      bulletin.style.left,
-    top:       bulletin.style.top,
-    zIndex:    bulletin.style.zIndex,
-    boxShadow: bulletin.style.boxShadow,
-    borderRadius: bulletin.style.borderRadius,
-  };
+  const totalPagines = paginacio.length || 1;
+  const paginaOrig   = paginaActual;
+  const mes     = document.getElementById('b-mes').value.toLowerCase();
+  const ini     = document.getElementById('b-ini').value.replace(/-/g,'');
+  const baseNom = `butlleti_${mes}${ini ? '_'+ini : ''}`;
 
   try {
-    const EXPORT_W = 900;   // amplada de l'exportació en pixels lògics
-    const PAGE_H   = 1200;  // alçada màxima per pàgina en pixels lògics
-    const SCALE    = 2;
+    for (let p = 0; p < totalPagines; p++) {
+      btn.textContent = `⏳ Exportant pàgina ${p+1} de ${totalPagines}…`;
 
-    // Expandir el butlletí temporalment fora del flux per capturar-lo sencer
-    bulletin.style.width        = EXPORT_W + 'px';
-    bulletin.style.maxWidth     = 'none';
-    bulletin.style.position     = 'fixed';
-    bulletin.style.left         = '-9999px';
-    bulletin.style.top          = '0';
-    bulletin.style.zIndex       = '-1';
-    bulletin.style.boxShadow    = 'none';
-    bulletin.style.borderRadius = '0';
+      // Mostrar la pàgina p al bulletin
+      paginaActual = p;
+      actualitzarNavPagina();
+      renderPaginaActual();
 
-    // Esperar un frame perquè el layout es recalculi
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Esperar que el DOM es renderitzi
+      await new Promise(r => setTimeout(r, 120));
 
-    // Mesurar els day-blocks ABANS de capturar (posicions reals del DOM expandit)
-    const dayBlocks = Array.from(bulletin.querySelectorAll('.day-block'));
-    const bullRect  = bulletin.getBoundingClientRect();
+      const bulletin = document.getElementById('bulletin');
 
-    // Boundaries de tall: entre blocs (en pixels lògics del bulletin)
-    const boundaries = [0];
-    dayBlocks.forEach(bl => {
-      const r = bl.getBoundingClientRect();
-      boundaries.push(Math.round(r.top    - bullRect.top));  // inici del bloc
-      boundaries.push(Math.round(r.bottom - bullRect.top));  // fi del bloc
-    });
-    const totalHLogic = Math.round(bullRect.height);
-    boundaries.push(totalHLogic);
+      const canvas = await html2canvas(bulletin, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#FAFAF7',
+        logging: false,
+        onclone: (doc) => {
+          doc.querySelectorAll('*').forEach(el => {
+            el.style.webkitPrintColorAdjust = 'exact';
+            el.style.printColorAdjust = 'exact';
+          });
+        }
+      });
 
-    // Capturar tot el butlletí a alta resolució
-    const fullCanvas = await html2canvas(bulletin, {
-      scale: SCALE,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#FAFAF7',
-      logging: false,
-      width:  EXPORT_W,
-      height: totalHLogic,
-      onclone: (doc) => {
-        doc.querySelectorAll('*').forEach(el => {
-          el.style.webkitPrintColorAdjust = 'exact';
-          el.style.printColorAdjust = 'exact';
-        });
-      }
-    });
-
-    const totalW  = fullCanvas.width;   // EXPORT_W * SCALE
-    const totalH  = fullCanvas.height;  // totalHLogic * SCALE
-    const pageHpx = PAGE_H * SCALE;
-
-    // Calcular pàgines sense tallar cap requadre
-    const pages = [];
-    let curY = 0; // en pixels canvas (lògics * SCALE)
-
-    while (curY < totalH) {
-      const maxCutPx = curY + pageHpx;
-
-      // Convertir boundaries a pixels canvas
-      const boundsPx = boundaries.map(b => b * SCALE);
-
-      // Trobar el boundary més alt que sigui <= maxCutPx i > curY
-      const valid = boundsPx.filter(b => b > curY && b <= maxCutPx);
-      let cutY;
-      if (valid.length > 0) {
-        cutY = Math.max(...valid); // el més avall possible sense passar de la pàgina
-      } else {
-        // Bloc més gran que una pàgina: forçar el següent boundary > curY
-        const next = boundsPx.filter(b => b > curY);
-        cutY = next.length ? Math.min(...next) : totalH;
-      }
-      cutY = Math.min(cutY, totalH);
-
-      if (cutY <= curY) break; // seguretat anti-bucle infinit
-
-      pages.push({ y: curY, h: cutY - curY });
-      curY = cutY;
-    }
-
-    // Restaurar estils originals ABANS de descarregar
-    Object.assign(bulletin.style, origBulletinStyle);
-
-    // Descarregar una imatge per pàgina
-    const mes     = document.getElementById('b-mes').value.toLowerCase();
-    const ini     = document.getElementById('b-ini').value.replace(/-/g,'');
-    const baseNom = `butlleti_${mes}${ini ? '_'+ini : ''}`;
-
-    for (let i = 0; i < pages.length; i++) {
-      const { y, h } = pages[i];
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width  = totalW;
-      pageCanvas.height = h;
-      const ctx = pageCanvas.getContext('2d');
-      // Fons blanc per si hi ha transparències
-      ctx.fillStyle = '#FAFAF7';
-      ctx.fillRect(0, 0, totalW, h);
-      ctx.drawImage(fullCanvas, 0, y, totalW, h, 0, 0, totalW, h);
-
+      // Descarregar
       const link = document.createElement('a');
-      link.download = pages.length > 1 ? `${baseNom}_p${i+1}.png` : `${baseNom}.png`;
-      link.href = pageCanvas.toDataURL('image/png');
+      link.download = totalPagines > 1 ? `${baseNom}_p${p+1}.png` : `${baseNom}.png`;
+      link.href = canvas.toDataURL('image/png');
       link.click();
-      if (i < pages.length - 1) await new Promise(r => setTimeout(r, 350));
+
+      if (p < totalPagines - 1) await new Promise(r => setTimeout(r, 400));
     }
 
-    toast(pages.length > 1 ? `✅ ${pages.length} imatges exportades` : '✅ Imatge exportada correctament');
+    toast(totalPagines > 1 ? `✅ ${totalPagines} imatges exportades` : '✅ Imatge exportada correctament');
 
   } catch(e) {
-    // Restaurar en cas d'error també
-    Object.assign(bulletin.style, origBulletinStyle);
     toast('❌ Error exportant: ' + e.message, true);
   } finally {
+    // Restaurar la pàgina original
+    paginaActual = paginaOrig;
+    actualitzarNavPagina();
+    renderPaginaActual();
     btn.disabled = false;
     btn.textContent = '🖼️ Exportar com a imatge';
   }
