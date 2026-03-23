@@ -339,11 +339,20 @@ textarea{resize:vertical;min-height:52px;line-height:1.5;}
 .act-row+.act-row{border-top:1px solid #F2F2F7;}
 .act-photo{
   width:92px;min-height:92px;flex-shrink:0;overflow:hidden;
-  background:var(--green-pale);display:flex;align-items:center;
-  justify-content:center;align-self:stretch;
+  background:var(--green-pale);
+  position:relative;
 }
-.act-photo img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
-.act-photo-icon{font-size:1.9rem;opacity:.45;}
+.act-photo img{
+  position:absolute;top:0;left:0;
+  width:100%;height:100%;
+  object-fit:cover;object-position:center;
+  display:block;
+}
+.act-photo-icon{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-size:1.9rem;opacity:.45;
+}
 .act-body{padding:11px 13px;flex:1;min-width:0;}
 .act-name-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px;}
 .act-name{font-size:.95rem;font-weight:700;color:var(--text);letter-spacing:-.01em;border-left:2.5px solid var(--bordeus);padding-left:7px;line-height:1.25;}
@@ -1441,9 +1450,7 @@ async function generarPaginesA4(scale = 2) {
   const captureSection = async (selector) => {
     const src  = bulletin.querySelector(selector);
     const node = src.cloneNode(true);
-    node.style.width    = CONTENT_W + 'px';
-    node.style.maxWidth = 'none';
-    node.style.display  = 'block';
+    node.style.cssText += `;width:${CONTENT_W}px;max-width:none;box-sizing:border-box;display:flex;`;
     wrap.innerHTML = '';
     wrap.appendChild(node);
     await new Promise(r => setTimeout(r, 60));
