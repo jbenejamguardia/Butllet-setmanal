@@ -1121,7 +1121,9 @@ function fmtDate(s) {
   if (!s) return '';
   const M=['gener','febrer','març','abril','maig','juny','juliol','agost','setembre','octubre','novembre','desembre'];
   const [,m,d] = s.split('-');
-  return `${parseInt(d)} de ${M[parseInt(m)-1]}`;
+  const mes = M[parseInt(m)-1];
+  const prep = mes.startsWith('a') || mes.startsWith('o') ? "d'" : 'de ';
+  return `${parseInt(d)} ${prep}${mes}`;
 }
 
 function renderLlista() {
@@ -1225,7 +1227,7 @@ function updateBulletinHeader() {
   document.getElementById('b-prev-titol').textContent = titol;
   document.getElementById('b-prev-mes').textContent = mes;
   const M=['gener','febrer','març','abril','maig','juny','juliol','agost','setembre','octubre','novembre','desembre'];
-  const fmt = s => { if(!s) return ''; const [,m,d]=s.split('-'); return `${parseInt(d)} de ${M[parseInt(m)-1]}`; };
+  const fmt = s => { if(!s) return ''; const [,m,d]=s.split('-'); const mes=M[parseInt(m)-1]; const prep=mes.startsWith('a')||mes.startsWith('o')?"d'":"de "; return `${parseInt(d)} ${prep}${mes}`; };
   document.getElementById('b-prev-setmana').textContent = ini && fi ? `Del ${fmt(ini)} al ${fmt(fi)}` : '';
 }
 
